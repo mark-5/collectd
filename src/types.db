@@ -215,6 +215,7 @@ root_dispersion         value:GAUGE:U:U
 route_etx               value:GAUGE:0:U
 route_metric            value:GAUGE:0:U
 routes                  value:GAUGE:0:U
+rpc_stat                value:DERIVE:0:U
 satellites              value:GAUGE:0:U
 segments                value:GAUGE:0:65535
 serial_octets           rx:DERIVE:0:U, tx:DERIVE:0:U

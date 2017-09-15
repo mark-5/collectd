@@ -285,6 +285,24 @@ static const char *nfs4_client41_procedures_names[] = {
 
 #endif
 
+static const char *nfs_rpc_client_stat_names[] = {
+    "rpccnt",
+    "rpcretrans",
+    "rpcauthrefresh"
+};
+static size_t nfs_rpc_client_stat_names_num =
+    STATIC_ARRAY_SIZE(nfs_rpc_client_stat_names);
+
+static const char *nfs_rpc_server_stat_names[] = {
+    "rpccnt",
+    "rpcbadcnt",
+    "rpcbadfmt",
+    "rpcbadauth",
+    "rpcbadclnt"
+};
+static size_t nfs_rpc_server_stat_names_num =
+    STATIC_ARRAY_SIZE(nfs_rpc_server_stat_names);
+
 #if HAVE_LIBKSTAT
 extern kstat_ctl_t *kc;
 static kstat_t *nfs2_ksp_client;
@@ -349,6 +367,39 @@ static void nfs_procedures_submit(const char *plugin_instance,
     plugin_dispatch_values(&vl);
   }
 } /* void nfs_procedures_submit */
+
+static void nfs_submit_rpc(const char *instance, char **fields,
+                           size_t fields_num, const char **stat_names) {
+  value_list_t vl = VALUE_LIST_INIT;
+
+  vl.values_len = 1;
+  sstrncpy(vl.plugin, "nfs", sizeof(vl.plugin));
+  snprintf(vl.plugin_instance, sizeof(vl.plugin_instance), "rpc_%s", instance);
+  sstrncpy(vl.type, "rpc_stat", sizeof(vl.type));
+
+  for (size_t i = 0; i < fields_num; i++) {
+    value_t value;
+    (void)parse_value(fields[i], &value, DS_TYPE_DERIVE);
+    vl.values = &value;
+
+    sstrncpy(vl.type_instance, stat_names[i], sizeof(vl.type_instance));
+    plugin_dispatch_values(&vl);
+  }
+}
+
+static int nfs_submit_rpc_safe(const char *instance, char **fields,
+                               size_t fields_num, const char **stat_names,
+                               size_t stat_names_num) {
+  if (fields_num != stat_names_num) {
+    WARNING("nfs plugin: Wrong number of fields for "
+            "rpc_%s statistics. Expected %zu, got %zu.",
+            instance, stat_names_num, fields_num);
+    return EINVAL;
+  }
+
+  nfs_submit_rpc(instance, fields, fields_num, stat_names);
+  return 0;
+}
 
 #if KERNEL_LINUX
 static void nfs_submit_fields(int nfs_version, const char *instance,
@@ -509,6 +560,14 @@ static void nfs_read_linux(FILE *fh, const char *inst) {
     } else if (strcmp(fields[0], "proc4") == 0) {
       if (inst[0] == 'c')
         nfs_submit_nfs4_client(inst, fields + 2, (size_t)(fields_num - 2));
+    } else if (strcmp(fields[0], "rpc") == 0) {
+      if (inst[0] == 'c') {
+        nfs_submit_rpc_safe(inst, fields + 1, (size_t)(fields_num - 1),
+                            nfs_rpc_client_stat_names, nfs_rpc_client_stat_names_num);
+      } else if (inst[0] == 's') {
+        nfs_submit_rpc_safe(inst, fields + 1, (size_t)(fields_num - 1),
+                            nfs_rpc_server_stat_names, nfs_rpc_server_stat_names_num);
+      }
     }
   } /* while (fgets) */
 } /* void nfs_read_linux */
